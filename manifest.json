@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "NotifyPause Magic",
+  "version": "1.0",
+  "permission": ["notifications", "storage"],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}
