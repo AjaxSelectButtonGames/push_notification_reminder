@@ -85,18 +85,22 @@
     // Also intercept the Notification constructor to catch notifications being shown
     const OriginalNotification = window.Notification;
     window.Notification = function(title, options = {}) {
-      // Send notification details to our extension
-      window.dispatchEvent(new CustomEvent('notificationShown', {
-        detail: {
-          title: title,
-          message: options.body || '',
-          icon: options.icon || '',
-          timestamp: Date.now(),
-          url: window.location.href,
-          domain: window.location.hostname
-        }
+      const notificationData = {
+        title: title,
+        message: options.body || '',
+        icon: options.icon || '',
+        timestamp: Date.now(),
+        url: window.location.href,
+        domain: window.location.hostname
+      };
+
+      // Send notification details to our extension for evaluation
+      window.dispatchEvent(new CustomEvent('notificationToEvaluate', {
+        detail: notificationData
       }));
 
+      // Create a promise that will be resolved by bridge.js after rule evaluation
+      // For now, we'll create the notification but the bridge will handle the decision
       return new OriginalNotification(title, options);
     };
     

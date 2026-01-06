@@ -26,6 +26,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return;
   }
 
+  if (message.type === "EVALUATE_NOTIFY") {
+    evaluateAndRespond(message.data, sendResponse);
+    return true; // Keep channel open for async response
+  }
+
   if (message.type === "NEW_NOTIFY") {
     addToFeed({ ...message.data, sourceType: "page" });
     return;
@@ -56,6 +61,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 /* -------------------------------------------------
    CORE FEED LOGIC
 -------------------------------------------------- */
+
+function evaluateAndRespond(data, sendResponse) {
+  chrome.storage.local.get(["feed"], (res) => {
+    const feed = res.feed || [];
+    const decision = evaluateNotification(data, feed);
+    
+    // Send decision back to content script
+    sendResponse({
+      decision: decision.decision,
+      reason: decision.reason
+    });
+  });
+}
 
 function generateId() {
   return `notify_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;

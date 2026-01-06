@@ -18,13 +18,26 @@
   });
 
   // Listen for notification events from inject.js
-  window.addEventListener('notificationShown', (event) => {
+  window.addEventListener('notificationToEvaluate', async (event) => {
     const details = event.detail;
     
-    // Forward to background script
+    // Ask background script to evaluate this notification
     chrome.runtime.sendMessage({
-      type: 'NEW_NOTIFY',
+      type: 'EVALUATE_NOTIFY',
       data: details
+    }, (response) => {
+      if (!response) return;
+      
+      const { decision, reason } = response;
+      
+      // Always add to feed regardless of decision
+      chrome.runtime.sendMessage({
+        type: 'NEW_NOTIFY',
+        data: details
+      });
+      
+      // Show visual feedback based on decision
+      showDecisionFeedback(details, decision, reason);
     });
   });
 
@@ -109,55 +122,130 @@
     overlay.appendChild(message);
     overlay.appendChild(closeButton);
 
-    // Add CSS animation
-    if (!document.getElementById('notifypause-animations')) {
-      const style = document.createElement('style');
-      style.id = 'notifypause-animations';
-      style.textContent = `
-        @keyframes slideIn {
-          from {
-            transform: translateX(400px);
-            opacity: 0;
-          }
-          to {
-            transform: translateX(0);
-            opacity: 1;
-          }
-        }
-        @keyframes slideOut {
-          from {
-            transform: translateX(0);
-            opacity: 1;
-          }
-          to {
-            transform: translateX(400px);
-            opacity: 0;
-          }
-        }
-      `;
-      document.head.appendChild(style);
-    }
+    addAnimationStyles();
+    appendToBody(overlay, 10000);
+  }
 
-    // Wait for DOM to be ready
-    if (document.body) {
-      document.body.appendChild(overlay);
-      
-      // Auto-dismiss after 10 seconds
-      setTimeout(() => {
-        if (overlay.parentNode) {
-          overlay.style.animation = 'slideOut 0.3s ease-in';
-          setTimeout(() => overlay.remove(), 300);
+  function showDecisionFeedback(notificationData, decision, reason) {
+    const overlay = document.createElement('div');
+    overlay.className = 'notifypause-decision-overlay';
+    
+    // Different styles based on decision
+    let bgColor, emoji, decisionText;
+    
+    if (decision === 'allow') {
+      bgColor = 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)';
+      emoji = '🟢';
+      decisionText = 'ALLOWED';
+    } else if (decision === 'flag') {
+      bgColor = 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)';
+      emoji = '🟡';
+      decisionText = 'FLAGGED';
+    } else if (decision === 'hold') {
+      bgColor = 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)';
+      emoji = '🔴';
+      decisionText = 'HELD';
+    }
+    
+    overlay.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: ${bgColor};
+      color: white;
+      padding: 16px;
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+      z-index: 999999;
+      max-width: 380px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      animation: slideIn 0.3s ease-out;
+    `;
+
+    overlay.innerHTML = `
+      <div style="display: flex; align-items: start; gap: 12px;">
+        <div style="font-size: 28px; line-height: 1;">${emoji}</div>
+        <div style="flex: 1; min-width: 0;">
+          <div style="font-size: 12px; font-weight: 700; opacity: 0.9; letter-spacing: 0.5px; margin-bottom: 4px;">
+            ${decisionText}
+          </div>
+          <div style="font-size: 15px; font-weight: 600; margin-bottom: 6px; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            ${escapeHtml(notificationData.title)}
+          </div>
+          <div style="font-size: 13px; opacity: 0.9; line-height: 1.4; margin-bottom: 8px;">
+            ${escapeHtml(reason)}
+          </div>
+          <div style="font-size: 11px; opacity: 0.75; font-style: italic;">
+            ${notificationData.domain}
+          </div>
+        </div>
+      </div>
+    `;
+
+    addAnimationStyles();
+    appendToBody(overlay, 4000);
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  function addAnimationStyles() {
+    if (document.getElementById('notifypause-animations')) return;
+    
+    const style = document.createElement('style');
+    style.id = 'notifypause-animations';
+    style.textContent = `
+      @keyframes slideIn {
+        from {
+          transform: translateX(400px);
+          opacity: 0;
         }
-      }, 10000);
+        to {
+          transform: translateX(0);
+          opacity: 1;
+        }
+      }
+      @keyframes slideOut {
+        from {
+          transform: translateX(0);
+          opacity: 1;
+        }
+        to {
+          transform: translateX(400px);
+          opacity: 0;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function appendToBody(element, autoDismissMs) {
+    if (document.body) {
+      document.body.appendChild(element);
+      
+      if (autoDismissMs) {
+        setTimeout(() => {
+          if (element.parentNode) {
+            element.style.animation = 'slideOut 0.3s ease-in';
+            setTimeout(() => element.remove(), 300);
+          }
+        }, autoDismissMs);
+      }
     } else {
       document.addEventListener('DOMContentLoaded', () => {
-        document.body.appendChild(overlay);
-        setTimeout(() => {
-          if (overlay.parentNode) {
-            overlay.style.animation = 'slideOut 0.3s ease-in';
-            setTimeout(() => overlay.remove(), 300);
-          }
-        }, 10000);
+        document.body.appendChild(element);
+        
+        if (autoDismissMs) {
+          setTimeout(() => {
+            if (element.parentNode) {
+              element.style.animation = 'slideOut 0.3s ease-in';
+              setTimeout(() => element.remove(), 300);
+            }
+          }, autoDismissMs);
+        }
       });
     }
   }
